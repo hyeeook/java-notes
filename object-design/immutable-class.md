@@ -39,7 +39,7 @@ class Money {
     }
 
     int toUSD() {
-        return amount / exchangeRate;   // 누군가 Money.exchangeRate를 0으로 바꾸면 오류 발생(객체의 동작이 바뀜)
+        return amount / exchangeRate;   // Money.exchangeRate = 0 으로 변경되면 ArithmeticException 발생(객체의 동작이 바뀜)
     }
 }
 ```
@@ -47,7 +47,7 @@ class Money {
 # 3. 불변성을 위협하는 문제와 해결책
 상속<br>
 
-예시 문제상황: Money가 상속이 가능한 클래스인 경우(클래스에 final 미적용)<br>
+문제: Money가 상속이 가능한 클래스인 경우(클래스에 final 미적용)<br>
 부모 클래스는 불변이지만 자식 클래스가 새로운 필드/메서드를 추가하면 불변의 약속이 깨짐.
 ```java
 // 부모
@@ -86,7 +86,7 @@ class MutableMoney extends Money {
 Money price = new MutableMoney(1000);   // 다형성으로 부모 타입으로 받음
 ((MutableMoney)price).setValue(0);      // 불변이 깨짐
 ```
-예시 해결상황: Money가 상속이 불가한 클래스인 경우(클래스에 final 적용)<br>
+해결: Money가 상속이 불가한 클래스인 경우(클래스에 final 적용)<br>
 ```java
 // 방법 (1): 상속 자체 막기
 final class Money {
