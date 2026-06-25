@@ -28,3 +28,43 @@ receipt.save(price);    // 0원으로 기록됨
 4. 가변 객체를 인스턴스 필드로 사용해야 한다면 방어적 복사 사용
 
 # 3. 불변성을 위협하는 문제와 해결책
+1. 상속
+예시 문제 상황: Money가 상속이 가능한 클래스인 경우(클래스에 final 미적용)<br>
+부모 클래스는 불변이지만 자식 클래스가 새로운 필드/메서드를 추가하면 불변의 약속이 깨짐.
+```java
+// 부모
+class Money {
+    private final int amount;
+
+    Money(int amount) {
+        this.amount = amount;
+    }
+
+    public int getAmount() {
+        return this.amount;
+    }
+}
+
+// 자손
+class MutableMoney extends Money {
+    private int amount; // 부모의 amount 필드를 자손의 amount 필드로 가림
+
+    MutableMoney(int amount) {
+        super(amount);
+        this.amount = amount;
+    }
+
+    public void setValue(int amount) {
+        this.amount = amount;   // 변경 가능
+    }
+
+    @Override
+    public int getAmount() {
+        return this.amount; // 부모의 필드가 아닌 자신의 필드를 반환
+    }
+}
+
+// 클라이언트
+Money price = new MutableMoney(1000);   // 다형성으로 부모 타입으로 받음
+((MutableMoney)price).setValue(0);      // 불변이 깨짐
+```
