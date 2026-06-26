@@ -23,22 +23,17 @@ receipt.save(price);    // 0원으로 기록됨
 
 # 2. 불변 클래스의 조건
 1. 모든 인스턴스 필드는 final(재할당 방지)
-2. 모든 인스턴스 필드는 private(캡슐화)
-3. 인스턴스 필드의 setter 제거
-4. 가변 객체를 인스턴스 필드로 사용해야 한다면 방어적 복사 사용
+2. 가변 객체를 인스턴스 필드로 사용해야 한다면 방어적 복사 사용
+3. 모든 인스턴스 필드는 private(캡슐화)
+4. 인스턴스 필드의 setter 등 상태를 변경하는 메서드 제거
+
 > 방어적 복사는 defensive-copy.md 참고.
-
-보충설명
-> static 필드는 클래스에 속하므로 불변 클래스 조건에 포함되지 않지만, static 필드가 변경되면 인스턴스 필드가 바뀌지 않아도 객체의 동작이 달라질 수 있어 불변의 약속이 깨질 수 있다. 완전한 불변을 원한다면 static 필드도 final로 관리하는 것이 좋다.
-
-> ⚠️ final은 재할당만 막을 뿐, 가변 객체의 내부 상태 변경은 막지 못한다. 따라서 가변 객체 필드는 final + 방어적 복사가 함께 있어야 불변이 완성된다.
-
-> 💡 final의 또 다른 효과: 안전 발행(safe publication)
-> final 필드는 생성자가 끝나는 시점에 그 값이 다른 스레드에서도 완성된 상태로 보이는 것이 보장된다(JMM). 덕분에 불변 객체는 별도의 동기화(synchronized, volatile) 없이도 여러 스레드가 안전하게 공유할 수 있다.
 
 > 참고: sealed 클래스(자바 17+)
 > permits로 명시한 자식만 상속을 허용하는 방식. 단, 상속 '금지'가 아니라 '제한'이므로 불변 강제보다는 상속 계층을 통제된 범위로 한정할 때 쓴다(각 자식 클래스는 final/sealed/non-sealed 중 하나를 명시해야 함).
 
+보충설명
+> static 필드는 클래스에 속하므로 불변 클래스 조건에 포함되지 않지만, static 필드가 변경되면 인스턴스 필드가 바뀌지 않아도 객체의 동작이 달라질 수 있어 불변의 약속이 깨질 수 있다. 완전한 불변을 원한다면 static 필드도 final로 관리하는 것이 좋다.
 ```java
 class Money {
     static int exchangeRate = 1300; // final 아님
@@ -50,6 +45,35 @@ class Money {
 
     int toUSD() {
         return amount / exchangeRate;   // Money.exchangeRate = 0 으로 변경되면 ArithmeticException 발생(객체의 동작이 바뀜)
+    }
+}
+```
+
+> ⚠️ final은 재할당만 막을 뿐, 가변 객체의 내부 상태 변경은 막지 못한다. 따라서 가변 객체 필드는 final + 방어적 복사가 함께 있어야 불변이 완성된다.
+
+> 💡 final의 또 다른 효과: 안전 발행(safe publication)
+> final 필드는 생성자가 끝나는 시점에 그 값이 다른 스레드에서도 완성된 상태로 보이는 것이 보장된다(JMM). 덕분에 불변 객체는 별도의 동기화(synchronized, volatile) 없이도 여러 스레드가 안전하게 공유할 수 있다.
+
+> 🔍 "상태를 변경하는 메서드"의 여러 형태
+> setter는 가장 노골적인 형태일 뿐, 이름만 다른 변경 메서드나 가변 객체의 내부 변경도 같은 부류다.
+```java
+public final class Account {
+    private final int balance;
+    private final List<String> history;
+
+    public Account(int balance, List<String> history) {
+        this.balance = balance;
+        this.history = new ArrayList<>(history);
+    }
+
+    // ❌ 1. 전형적인 setter — final 필드라 이건 컴파일 자체가 안 됨
+    //public void setBalance(int balance) {
+    //    this.balance = balance;
+    //}
+
+    // ❌ 2. 가변 객체 필드의 내부 변경 — 재할당이 아니라 final이 못 막음(가장 위험)
+    public void addHistory(String record) {
+        this.history.add(record);   // 컴파일 통과! 내부 상태가 바뀜
     }
 }
 ```
