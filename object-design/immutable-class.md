@@ -22,13 +22,23 @@ receipt.save(price);    // 0원으로 기록됨
 2. 변경 수단(setter 등)이 없어 잘못된 코드 작성 시 컴파일 시점에 즉시 발견 가능
 
 # 2. 불변 클래스의 조건
-1. 모든 인스턴스 필드는 final
-2. 모든 인스턴스 필드는 private(캡슐화를 위함, 불변성의 핵심은 final)
+1. 모든 인스턴스 필드는 final(재할당 방지)
+2. 모든 인스턴스 필드는 private(캡슐화)
 3. 인스턴스 필드의 setter 제거
 4. 가변 객체를 인스턴스 필드로 사용해야 한다면 방어적 복사 사용
+> 방어적 복사는 defensive-copy.md 참고.
 
 보충설명
 > static 필드는 클래스에 속하므로 불변 클래스 조건에 포함되지 않지만, static 필드가 변경되면 인스턴스 필드가 바뀌지 않아도 객체의 동작이 달라질 수 있어 불변의 약속이 깨질 수 있다. 완전한 불변을 원한다면 static 필드도 final로 관리하는 것이 좋다.
+
+> ⚠️ final은 재할당만 막을 뿐, 가변 객체의 내부 상태 변경은 막지 못한다. 따라서 가변 객체 필드는 final + 방어적 복사가 함께 있어야 불변이 완성된다.
+
+> 💡 final의 또 다른 효과: 안전 발행(safe publication)
+> final 필드는 생성자가 끝나는 시점에 그 값이 다른 스레드에서도 완성된 상태로 보이는 것이 보장된다(JMM). 덕분에 불변 객체는 별도의 동기화(synchronized, volatile) 없이도 여러 스레드가 안전하게 공유할 수 있다.
+
+> 참고: sealed 클래스(자바 17+)
+> permits로 명시한 자식만 상속을 허용하는 방식. 단, 상속 '금지'가 아니라 '제한'이므로 불변 강제보다는 상속 계층을 통제된 범위로 한정할 때 쓴다(각 자식 클래스는 final/sealed/non-sealed 중 하나를 명시해야 함).
+
 ```java
 class Money {
     static int exchangeRate = 1300; // final 아님
@@ -45,7 +55,7 @@ class Money {
 ```
 
 # 3. 불변성을 위협하는 문제와 해결책
-상속<br>
+***상속***<br>
 
 문제: Money가 상속이 가능한 클래스인 경우(클래스에 final 미적용)<br>
 부모 클래스는 불변이지만 자식 클래스가 새로운 필드/메서드를 추가하면 불변의 약속이 깨짐.
@@ -82,7 +92,7 @@ class MutableMoney extends Money {
     }
 }
 
-// 클라이언트
+// 사용하는 측
 Money price = new MutableMoney(1000);   // 다형성으로 부모 타입으로 받음
 ((MutableMoney)price).setValue(0);      // 불변이 깨짐
 ```
