@@ -23,11 +23,37 @@ receipt.save(price);    // 0원으로 기록됨
 
 # 2. 불변 클래스의 조건
 1. 모든 인스턴스 필드는 final(재할당 방지)
-2. 가변 객체를 인스턴스 필드로 사용해야 한다면 방어적 복사 사용
-3. 모든 인스턴스 필드는 private(캡슐화)
+    > 💡 final의 또 다른 효과: 안전 발행(safe publication)
+    > final 필드는 생성자가 끝나는 시점에 그 값이 다른 스레드에서도 완성된 상태로 보이는 것이 보장된다(JMM). 덕분에 불변 객체는 별도의 동기화(synchronized, volatile) 없이도 여러 스레드가 안전하게 공유할 수 있다.
+2. 모든 인스턴스 필드는 private(캡슐화)
+3. 가변 객체를 인스턴스 필드로 사용해야 한다면 방어적 복사 사용
+    > 방어적 복사는 defensive-copy.md 참고.
+    
+    > ⚠️ final은 재할당만 막을 뿐, 가변 객체의 내부 상태 변경은 막지 못한다. 따라서 가변 객체 필드는 final + 방어적 복사가 함께 있어야 불변이 완성된다.
 4. 인스턴스 필드의 setter 등 상태를 변경하는 메서드 제거
+    > 🔍 "상태를 변경하는 메서드"의 여러 형태<br>
+    > setter는 가장 노골적인 형태일 뿐, 이름만 다른 변경 메서드나 가변 객체의 내부 변경도 같은 부류다.
+    ```java
+    public final class Account {
+        private final int balance;
+        private final List<String> history;
 
-> 방어적 복사는 defensive-copy.md 참고.
+        public Account(int balance, List<String> history) {
+            this.balance = balance;
+            this.history = new ArrayList<>(history);
+        }
+
+        // ❌ 1. 전형적인 setter — final 필드라 이건 컴파일 자체가 안 됨
+        //public void setBalance(int balance) {
+        //    this.balance = balance;
+        //}
+
+        // ❌ 2. 가변 객체 필드의 내부 변경 — 재할당이 아니라 final이 못 막음(가장 위험)
+        public void addHistory(String record) {
+            this.history.add(record);   // 컴파일 통과! 내부 상태가 바뀜
+        }
+    }
+    ```
 
 > 참고: sealed 클래스(자바 17+)
 > permits로 명시한 자식만 상속을 허용하는 방식. 단, 상속 '금지'가 아니라 '제한'이므로 불변 강제보다는 상속 계층을 통제된 범위로 한정할 때 쓴다(각 자식 클래스는 final/sealed/non-sealed 중 하나를 명시해야 함).
@@ -49,40 +75,11 @@ class Money {
 }
 ```
 
-> ⚠️ final은 재할당만 막을 뿐, 가변 객체의 내부 상태 변경은 막지 못한다. 따라서 가변 객체 필드는 final + 방어적 복사가 함께 있어야 불변이 완성된다.
-
-> 💡 final의 또 다른 효과: 안전 발행(safe publication)
-> final 필드는 생성자가 끝나는 시점에 그 값이 다른 스레드에서도 완성된 상태로 보이는 것이 보장된다(JMM). 덕분에 불변 객체는 별도의 동기화(synchronized, volatile) 없이도 여러 스레드가 안전하게 공유할 수 있다.
-
-> 🔍 "상태를 변경하는 메서드"의 여러 형태
-> setter는 가장 노골적인 형태일 뿐, 이름만 다른 변경 메서드나 가변 객체의 내부 변경도 같은 부류다.
-```java
-public final class Account {
-    private final int balance;
-    private final List<String> history;
-
-    public Account(int balance, List<String> history) {
-        this.balance = balance;
-        this.history = new ArrayList<>(history);
-    }
-
-    // ❌ 1. 전형적인 setter — final 필드라 이건 컴파일 자체가 안 됨
-    //public void setBalance(int balance) {
-    //    this.balance = balance;
-    //}
-
-    // ❌ 2. 가변 객체 필드의 내부 변경 — 재할당이 아니라 final이 못 막음(가장 위험)
-    public void addHistory(String record) {
-        this.history.add(record);   // 컴파일 통과! 내부 상태가 바뀜
-    }
-}
-```
-
 # 3. 불변성을 위협하는 문제와 해결책
-***상속***<br>
+문제: Money가 **상속**이 가능한 클래스인 경우(클래스에 final 미적용)<br>
+부모 클래스는 불변이지만, 자식 클래스가 상속을 통해 불변의 약속을 깰 수 있음.
 
-문제: Money가 상속이 가능한 클래스인 경우(클래스에 final 미적용)<br>
-부모 클래스는 불변이지만 자식 클래스가 새로운 필드/메서드를 추가하면 불변의 약속이 깨짐.
+case (1): 부모 필드를 자손 필드로 가리기(shadowing)
 ```java
 // 부모
 class Money {
@@ -120,6 +117,47 @@ class MutableMoney extends Money {
 Money price = new MutableMoney(1000);   // 다형성으로 부모 타입으로 받음
 ((MutableMoney)price).setValue(0);      // 불변이 깨짐
 ```
+
+case (2): 필드를 가리지 않고 메서드만 오버라이딩
+```java
+// 부모
+class Money {
+    private final int amount;
+
+    Money(int amount) {
+        this.amount = amount;
+    }
+
+    public int getAmount() {
+        return this.amount;
+    }
+}
+
+// 자손 — 부모의 amount는 건드리지 않음
+class EvilMoney extends Money {
+    private int fake;
+
+    EvilMoney(int amount) {
+        super(amount);
+        this.fake = amount;
+    }
+
+    public void change(int n) {
+        this.fake = n;  // 부모 amount는 그대로 둠
+    }
+    
+    @Override
+    public int getAmount() {
+        return this.fake;   // 동작만 갈아끼움 → 호출할 때마다 값이 달라질 수 있음
+    }
+}
+
+// 사용하는 측
+Money price = new EvilMoney(1000);
+((EvilMoney)price).change(0);
+price.getAmount();  // 0 — 부모 amount는 1000 그대로지만 동작이 바뀜
+```
+
 해결: Money가 상속이 불가한 클래스인 경우(클래스에 final 적용)<br>
 ```java
 // 방법 (1): 상속 자체 막기
@@ -157,3 +195,6 @@ class Money {
     }
 }
 ```
+
+> 핵심: 필드를 가리든(방법 1) 메서드만 오버라이딩하든(방법 2), 위험의 본질은 "자식이 오버라이딩으로 동작을 바꾸는 것"이다.<br>
+> 그래서 해결책은 필드를 잠그는 게 아니라 상속 자체를 막는 것(클래스 final 등)이다.
