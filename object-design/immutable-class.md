@@ -55,6 +55,9 @@ receipt.save(price);    // 0원으로 기록됨
     }
     ```
 
+> 💡 record(자바 16+): 위 조건 대부분을 자동으로 충족하는 불변 데이터 클래스다.<br>
+> `public record Money(int amount) { }` 한 줄로 필드는 `private final`, 값 기반 `equals`/`hashCode`/`toString`, 접근자, 암묵적 final(상속 불가)까지 제공된다. 단, 필드가 가변 객체(List 등)라면 record라도 방어적 복사를 직접 해줘야 완전한 불변이 된다.
+
 > 참고: sealed 클래스(자바 17+)
 > permits로 명시한 자식만 상속을 허용하는 방식. 단, 상속 '금지'가 아니라 '제한'이므로 불변 강제보다는 상속 계층을 통제된 범위로 한정할 때 쓴다(각 자식 클래스는 final/sealed/non-sealed 중 하나를 명시해야 함).
 
@@ -77,11 +80,11 @@ class Money {
 
 # 3. 불변성을 위협하는 문제와 해결책
 문제: Money가 **상속**이 가능한 클래스인 경우(클래스에 final 미적용)<br>
-부모 클래스는 불변이지만, 자식 클래스가 상속을 통해 불변의 약속을 깰 수 있음.
+부모 클래스 자체는 불변이지만, 자식 클래스가 메서드를 오버라이딩해 불변의 약속을 깰 수 있음.
 
-case (1): 부모 필드를 자손 필드로 가리기(shadowing)
+case (1): 자식이 가변 상태를 추가하고 getter를 오버라이딩 → 불변이 깨짐
 ```java
-// 부모
+// 부모 — 그 자체로는 불변
 class Money {
     private final int amount;
 
@@ -94,69 +97,69 @@ class Money {
     }
 }
 
-// 자손
+// 자식 — 가변 필드를 추가하고 getAmount()를 오버라이딩
 class MutableMoney extends Money {
-    private int amount; // 부모의 amount 필드를 자손의 amount 필드로 가림
+    private int fakeAmount;
 
     MutableMoney(int amount) {
         super(amount);
-        this.amount = amount;
+        this.fakeAmount = amount;
     }
 
     public void setValue(int amount) {
-        this.amount = amount;   // 변경 가능
+        this.fakeAmount = amount;   // 변경 가능
     }
 
     @Override
     public int getAmount() {
-        return this.amount; // 부모의 필드가 아닌 자신의 필드를 반환
+        return this.fakeAmount;     // 부모의 amount가 아니라 가변 필드를 반환
     }
 }
 
 // 사용하는 측
 Money price = new MutableMoney(1000);   // 다형성으로 부모 타입으로 받음
-((MutableMoney)price).setValue(0);      // 불변이 깨짐
+((MutableMoney) price).setValue(0);
+price.getAmount();  // 0 — 부모 amount(1000)는 그대로지만 오버라이딩된 동작이 불변을 깬다
 ```
 
-case (2): 필드를 가리지 않고 메서드만 오버라이딩
+case (2): 필드 가리기(hiding)만으로는 불변이 깨지지 않음
 ```java
 // 부모
 class Money {
-    private final int amount;
+    protected final int amount;   // 자식에서 접근 가능하도록 protected
 
     Money(int amount) {
         this.amount = amount;
     }
 
     public int getAmount() {
-        return this.amount;
+        return this.amount;   // 부모 메서드는 항상 부모의 amount를 읽음(정적 바인딩)
     }
 }
 
-// 자손 — 부모의 amount는 건드리지 않음
-class EvilMoney extends Money {
-    private int fake;
+// 자식 — 같은 이름의 필드로 부모 필드를 가리지만(hiding), 메서드는 오버라이딩하지 않음
+class ChildMoney extends Money {
+    private int amount;   // 부모의 amount를 가림(hiding)
 
-    EvilMoney(int amount) {
+    ChildMoney(int amount) {
         super(amount);
-        this.fake = amount;
+        this.amount = amount;
     }
 
-    public void change(int n) {
-        this.fake = n;  // 부모 amount는 그대로 둠
-    }
-    
-    @Override
-    public int getAmount() {
-        return this.fake;   // 동작만 갈아끼움 → 호출할 때마다 값이 달라질 수 있음
+    public void setValue(int amount) {
+        this.amount = amount;   // 자식의 amount만 바뀜
     }
 }
 
 // 사용하는 측
-Money price = new EvilMoney(1000);
-((EvilMoney)price).change(0);
-price.getAmount();  // 0 — 부모 amount는 1000 그대로지만 동작이 바뀜
+Money price = new ChildMoney(1000);
+((ChildMoney) price).setValue(0);
+price.getAmount();  // 1000 — getAmount()는 부모의 amount를 읽으므로 불변이 유지된다
 ```
+필드는 정적 바인딩이라 부모의 `getAmount()`는 언제나 부모의 `amount`를 읽음. 따라서 필드를 가리는 것만으로는 불변이 깨지지 않고, **메서드 오버라이딩이 동반돼야** 깨짐.
+> 필드는 정적 바인딩, 메서드는 동적 바인딩 — 자세한 내용은 oop/inheritance.md 참고.
+
+> ⚠️ case (2)에서 부모 필드를 `protected`로 둔 것은 hiding을 보이기 위한 예시일 뿐이다. 실제 불변 클래스에서는 필드를 private으로 유지한다(2장 조건 참고).
 
 해결: Money가 상속이 불가한 클래스인 경우(클래스에 final 적용)<br>
 ```java
@@ -196,5 +199,5 @@ class Money {
 }
 ```
 
-> 핵심: 필드를 가리든(방법 1) 메서드만 오버라이딩하든(방법 2), 위험의 본질은 "자식이 오버라이딩으로 동작을 바꾸는 것"이다.<br>
+> 핵심: 불변을 깨는 것은 필드 가리기(case 2)가 아니라 자식의 메서드 오버라이딩(case 1)이다.<br>
 > 그래서 해결책은 필드를 잠그는 게 아니라 상속 자체를 막는 것(클래스 final 등)이다.

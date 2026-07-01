@@ -1,7 +1,8 @@
 # 목차
 1. [캡슐화가 왜 필요한가?](#1-캡슐화가-왜-필요한가)
 2. [캡슐화를 구현하는 방법](#2-캡슐화를-구현하는-방법)
-3. [주의점 - setter가 있어도 캡슐화인가?](#3-주의점---setter가-있어도-캡슐화인가)
+3. [주의점 (1) - setter가 있어도 캡슐화인가?](#3-주의점-1---setter가-있어도-캡슐화인가)
+4. [주의점 (2) - 가변 객체 필드가 캡슐화를 깨는 경우](#4-주의점-2---가변-객체-필드가-캡슐화를-깨는-경우)
 
 # 1. 캡슐화가 왜 필요한가?
 ## 캡슐화란?
@@ -72,10 +73,10 @@ setter를 추가해도 캡슐화의 형태는 유지됨. 필드를 직접 노출
 | 언제 쓰나? | 쓰지 않는다 | Entity (상태가 바뀌는 객체) | Value Object (불변 객체) |
 > Entity와 Value Object의 구분은 entity-vs-value-object.md 참고.
 
-# 4. 주의점 (2) - getter가 캡슐화를 깨는 경우
-필드를 private으로 선언하고 setter도 없는 상태라도 가변 객체의 참조를 그대로 반환하면 외부에서 내부 상태를 마음대로 바꿀 수 있음.
+# 4. 주의점 (2) - 가변 객체 필드가 캡슐화를 깨는 경우
+필드를 private으로 선언하고 setter도 없더라도, 가변 객체는 참조가 오가는 경로에서 방어적 복사를 하지 않으면 외부에서 내부 상태를 바꿀 수 있음. getter로 내보낼 때(출력)와 생성자·setter로 받을 때(입력) 모두 해당됨.
 
-문제: List의 참조를 그대로 반환하는 경우
+문제: getter가 List의 참조를 그대로 반환하는 경우 (출력 방향)
 ```java
 public class Team {
     private List<String> members;
@@ -97,10 +98,38 @@ team.getMembers().clear();      // 멤버 전체 삭제도 가능
 public class Team {
     private List<String> members;
 
-    // ✅ 방어적 복사 — 캡슐화 유지
+    // ✅ 방어적 복사 — 내부와 독립된 새 리스트를 반환
     public List<String> getMembers() {
-        return Collections.unmodifiableList(members);
+        return new ArrayList<>(members);
     }
 }
 ```
+> ⚠️ `Collections.unmodifiableList(members)`는 방어적 복사가 아니라 불변 뷰(읽기 전용 래퍼)다.<br>
+> 호출자의 수정은 막아주지만 내부 members를 그대로 들여다보는 래퍼라, 이후 내부 상태가 바뀌면 반환한 뷰에도 그대로 반영된다. 호출자의 변경만 막으면 되는 경우엔 충분하지만, 내부와 완전히 분리하려면 방어적 복사를 써야 한다.
+
+문제: 생성자가 외부 List를 참조 그대로 저장하는 경우 (입력 방향)
+```java
+public class Team {
+    private final List<String> members;
+
+    // ❌ 외부 리스트 참조를 그대로 저장 — 캡슐화 깨짐
+    public Team(List<String> members) {
+        this.members = members;
+    }
+}
+
+// 사용하는 측
+List<String> input = new ArrayList<>(List.of("Alice"));
+Team team = new Team(input);
+input.add("David");   // 외부에서 input을 바꾸면 team 내부도 함께 바뀜
+```
+
+해결: 받을 때도 방어적 복사
+```java
+public Team(List<String> members) {
+    this.members = new ArrayList<>(members);   // ✅ 입력 시점에 방어적 복사
+}
+```
+> 방어적 복사는 가변 객체가 오가는 입력(생성자·setter)과 출력(getter) 양쪽 모두에 필요하다.
+
 > 방어적 복사는 불변 클래스의 조건이기도 하다. 자세한 내용은 immutable-class.md 참고.
